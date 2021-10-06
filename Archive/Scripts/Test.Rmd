@@ -1,0 +1,56 @@
+---
+title: "Test2"
+output: html_document
+runtime: shiny
+---
+
+```{r, eval=TRUE, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(openxlsx)
+library(knitr)
+library(tibble)
+library(stringr)
+library(stringi)
+library(readxl)
+library(lubridate)
+library(shiny)
+```
+
+```{r, include=FALSE}
+source("U:/Internship Swiss TPH/First week/TIMCI/Auto Rmd/Audit Report Functions.R", local = knitr::knit_global())
+```
+
+```{r}
+df = read_csv("U:/Internship Swiss TPH/First week/03a-TIMCI-SPA-fa/03a-TIMCI-SPA-fa - audit.csv")
+df$question = sapply(df$node, create_question)
+df$start <- format_date_ms(df$start)
+df$end <- format_date_ms(df$end)
+```
+
+```{r}
+
+titlePanel("Test")
+selectInput("id", "Select Id", unique(df$`instance ID`)[1:10])
+
+
+temp_df <- reactive({
+  df[df$`instance ID`==input$id & !is.na(df$question),]
+})
+
+renderPlot({
+  data_df <- temp_df()
+  data_df$cut = cut(data_df$start, breaks=10, labels=F)
+  
+  ggplot(data_df) + geom_bar(aes(x=cut), fill="tomato3") +
+  scale_x_discrete(limits=c(1:10))
+})
+  
+renderTable({
+  data_df <- temp_df()
+  data_df$cut = cut(data_df$start, breaks=10, labels=F)
+
+  data_df$question[data_df$cut==10]
+})
+```

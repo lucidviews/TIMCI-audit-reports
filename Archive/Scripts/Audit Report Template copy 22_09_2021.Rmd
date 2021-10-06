@@ -1,0 +1,378 @@
+---
+output: html_document
+params:
+  file_path_zip: "/Users/lucassilbernagel/Documents/_Master HWR Berlin_/3nd Semester/Internship Swiss TPH/First week/03a-TIMCI-SPA-fa.zip"
+  file_name_csv: "07-TIMCI-fa - audit.csv"
+  display_code_chunks: TRUE
+  set_title: "some_default"
+title: "`r params$set_title`"
+author: "Lucas Silbernagel"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+`r if(!params$display_code_chunks) {"\\begin{comment}"}`
+```{r, eval=TRUE, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(openxlsx)
+library(knitr)
+library(tibble)
+library(stringr)
+```
+
+## I. Loading the data
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# Unzip and extract ODK data from ODK zip
+extract_data_from_odk_zip <- function(odk_zip, csv_name, start_date = NULL, end_date = NULL) {
+  
+  t <- tempdir()
+  utils::unzip(odk_zip, exdir = t)
+  fs::dir_ls(t)
+  raw_odk_data <- readr::with_edition(1, readr::read_csv(file.path(t, csv_name)))
+}
+
+df <- as.data.frame(extract_data_from_odk_zip(params$file_path_zip, params$file_name_csv))
+
+# Formatting dates from integer (in ms) to timestamp
+df$start = as.POSIXct(df$start/1000, origin="1970-01-01")
+df$end = as.POSIXct(df$end/1000, origin="1970-01-01")
+summary(df)
+```
+
+## II. Deriving new features
+**Time spent per event**
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# subtracting end from start date
+df$time_spent = as.numeric((df$end - df$start)/60)
+```
+
+**Question**
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# function to split the node strings so that only the question name remains 
+create_question <- function(str){
+  key=tail(unlist(strsplit(str,"/")),1)
+  return(key)
+}
+
+df$question = sapply(df$node, create_question)
+```
+
+**QuestionII with distinct values for step type**
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# list to decode the response values for step type
+step_type_decoding = c("registration", "waiting", "triage", "consultation", 'pharmacy', 'pharmacy', 'walking', 'combined registration', 'other')
+
+# replacing the response encoder value with 9 to match the list order
+df$`new-value`[df$`new-value`==99] <- 9
+
+# initializing a second question column where step type is differentiated into its several options
+df$questionII = sapply(df$node, create_question)
+df$questionII[df$questionII=='a1_a_4'] = 'scanning QR'
+df$questionII[df$questionII=='a1_a_4a'] = 'enter ID manually'
+df$questionII[df$questionII=='b1_4'] = 'select district'
+df$questionII[df$questionII=='fcode'] = 'select facility'
+for (row in 1:nrow(df)){
+  if (df$questionII[row]=='step_type' & !is.na(df$questionII[row])){
+    df$questionII[row]<- step_type_decoding[as.integer(df$`new-value`[row])]
+  }
+}
+```
+
+**Time until a response was changed + changes stream for step type events**
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+df <- df %>%
+# bringing the data in the right order   
+  arrange(`instance ID`, node, start) %>%
+# adding two empty columns to store the new features in
+  add_column(time_till_change=NA) %>%
+  add_column(changed_from=NA)
+
+# iterating over the df and computing the time it took until an answer was changed + adding what the question was before 
+for (i in 1:nrow(df)){
+  if (df$`old-value`[i]==df$`new-value`[i-1] && !is.na(df$`old-value`[i]) && !is.na(df$`new-value`[i-1]) ){
+    df$time_till_change[i] <- as.numeric(df$start[i]-df$end[i-1])
+    df$changed_from[i] <- df$questionII[i-1] 
+  } else{
+    next
+  }
+}
+head(df)
+```
+`r if(!params$display_code_chunks) {"\\end{comment}"}`
+
+`r if(params$display_code_chunks) {"\\begin{comment}"}`
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(openxlsx)
+library(knitr)
+library(tibble)
+library(stringr)
+```
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+# Unzip and extract ODK data from ODK zip
+extract_data_from_odk_zip <- function(odk_zip, csv_name, start_date = NULL, end_date = NULL) {
+  
+  t <- tempdir()
+  utils::unzip(odk_zip, exdir = t)
+  fs::dir_ls(t)
+  raw_odk_data <- readr::with_edition(1, readr::read_csv(file.path(t, csv_name)))
+}
+
+df <- as.data.frame(extract_data_from_odk_zip(params$file_path_zip, params$file_name_csv))
+
+# Formatting dates from integer (in ms) to timestamp
+df$start = as.POSIXct(df$start/1000, origin="1970-01-01")
+df$end = as.POSIXct(df$end/1000, origin="1970-01-01")
+summary(df)
+```
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+# Time spent per event
+
+# subtracting end from start date
+df$time_spent = as.numeric((df$end - df$start)/60)
+```
+
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+#Question
+
+# function to split the node strings so that only the question name remains 
+create_question <- function(str){
+  key=tail(unlist(strsplit(str,"/")),1)
+  return(key)
+}
+
+df$question = sapply(df$node, create_question)
+```
+
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+# QuestionII with distinct values for step type
+
+# list to decode the response values for step type
+step_type_decoding = c("registration", "waiting", "triage", "consultation", 'pharmacy', 'pharmacy', 'walking', 'combined registration', 'other')
+
+# replacing the response encoder value with 9 to match the list order
+df$`new-value`[df$`new-value`==99] <- 9
+
+# initializing a second question column where step type is differentiated into its several options
+df$questionII = sapply(df$node, create_question)
+df$questionII[df$questionII=='a1_a_4'] = 'scanning QR'
+df$questionII[df$questionII=='a1_a_4a'] = 'enter ID manually'
+df$questionII[df$questionII=='b1_4'] = 'select district'
+df$questionII[df$questionII=='fcode'] = 'select facility'
+for (row in 1:nrow(df)){
+  if (df$questionII[row]=='step_type' & !is.na(df$questionII[row])){
+    df$questionII[row]<- step_type_decoding[as.integer(df$`new-value`[row])]
+  }
+}
+```
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+# Time until a response was changed + changes stream for step type events
+
+df <- df %>%
+# bringing the data in the right order   
+  arrange(`instance ID`, node, start) %>%
+# adding two empty columns to store the new features in
+  add_column(time_till_change=NA) %>%
+  add_column(changed_from=NA)
+
+# iterating over the df and computing the time it took until an answer was changed + adding what the question was before 
+for (i in 1:nrow(df)){
+  if (df$`old-value`[i]==df$`new-value`[i-1] && !is.na(df$`old-value`[i]) && !is.na(df$`new-value`[i-1]) ){
+    df$time_till_change[i] <- as.numeric(df$start[i]-df$end[i-1])
+    df$changed_from[i] <- df$questionII[i-1] 
+  } else{
+    next
+  }
+}
+head(df)
+```
+`r if(params$display_code_chunks) {"\\end{comment}"}`
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+if (params$display_code_chunks){
+  knitr::opts_chunk$set(
+    echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE
+  )
+} else{
+  knitr::opts_chunk$set(
+    echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE
+  )
+}
+```
+
+## Loading the data
+```{r}
+# Unzip and extract ODK data from ODK zip
+extract_data_from_odk_zip <- function(odk_zip, csv_name, start_date = NULL, end_date = NULL) {
+  
+  t <- tempdir()
+  utils::unzip(odk_zip, exdir = t)
+  fs::dir_ls(t)
+  raw_odk_data <- readr::with_edition(1, readr::read_csv(file.path(t, csv_name)))
+}
+
+df <- as.data.frame(extract_data_from_odk_zip(params$file_path_zip, params$file_name_csv))
+
+# Formatting dates from integer (in ms) to timestamp
+df$start = as.POSIXct(df$start/1000, origin="1970-01-01")
+df$end = as.POSIXct(df$end/1000, origin="1970-01-01")
+summary(df)
+```
+
+## Deriving new features
+**Time spent per event**
+```{r}
+# subtracting end from start date
+df$time_spent = as.numeric((df$end - df$start)/60)
+```
+
+**Question**
+```{r}
+# function to split the node strings so that only the question name remains 
+create_question <- function(str){
+  key=tail(unlist(strsplit(str,"/")),1)
+  return(key)
+}
+
+df$question = sapply(df$node, create_question)
+```
+
+**QuestionII with distinct values for step type**
+```{r}
+# list to decode the response values for step type
+step_type_decoding = c("registration", "waiting", "triage", "consultation", 'pharmacy', 'pharmacy', 'walking', 'combined registration', 'other')
+
+# replacing the response encoder value with 9 to match the list order
+df$`new-value`[df$`new-value`==99] <- 9
+
+# initializing a second question column where step type is differentiated into its several options
+df$questionII = sapply(df$node, create_question)
+df$questionII[df$questionII=='a1_a_4'] = 'scanning QR'
+df$questionII[df$questionII=='a1_a_4a'] = 'enter ID manually'
+df$questionII[df$questionII=='b1_4'] = 'select district'
+df$questionII[df$questionII=='fcode'] = 'select facility'
+for (row in 1:nrow(df)){
+  if (df$questionII[row]=='step_type' & !is.na(df$questionII[row])){
+    df$questionII[row]<- step_type_decoding[as.integer(df$`new-value`[row])]
+  }
+}
+```
+
+**Time until a response was changed + changes stream for step type events**
+```{r}
+df <- df %>%
+# bringing the data in the right order   
+  arrange(`instance ID`, node, start) %>%
+# adding two empty columns to store the new features in
+  add_column(time_till_change=NA) %>%
+  add_column(changed_from=NA)
+
+# iterating over the df and computing the time it took until an answer was changed + adding what the question was before 
+for (i in 1:nrow(df)){
+  if (df$`old-value`[i]==df$`new-value`[i-1] && !is.na(df$`old-value`[i]) && !is.na(df$`new-value`[i-1]) ){
+    df$time_till_change[i] <- as.numeric(df$start[i]-df$end[i-1])
+    df$changed_from[i] <- df$questionII[i-1] 
+  } else{
+    next
+  }
+}
+head(df)
+```
+**Checking for outliers by lookig at the distribution of time_spent.**
+```{r}
+#plotting cdf to see distribution of the time_spent feature 
+ecdf = ecdf(df$time_spent[!is.na(df$time_spent)])
+plot(ecdf, main="CDF of Time Spent per Event")
+
+# plotting a histogram just to reassure
+hist(df$time_spent[!is.na(df$time_spent)])
+```
+
+**Very few events made up for very long event times. To avoid biases in summary statistics, we remove the largest 5 % of values**
+```{r}
+df_clean = subset(df, time_spent<quantile(df$time_spent,0.95, na.rm=TRUE))
+```
+
+## 2. Median time spent per question
+### 2.1 Table of all questions and their median time
+```{r}
+df_median_time_per_question <- df_clean %>%
+  filter(event=='question') %>%
+  group_by(question) %>%
+  summarise(median_time = median(time_spent)) %>%
+  arrange(desc(median_time))
+kable(df_median_time_per_question)
+
+df_median_time_per_questionII <- df_clean %>%
+  filter(event=='question') %>%
+  group_by(questionII) %>%
+  summarise(median_time = median(time_spent)) %>%
+  arrange(desc(median_time))
+kable(df_median_time_per_questionII)
+```
+
+## 3. Input changes per question
+### 3.1 Table with counts of input changes per question and per question II
+```{r}
+df_changes_per_question <- df %>%
+  filter(event=='question', !is.na(`old-value`), !is.na(`new-value`)) %>%
+  group_by(question) %>%
+  summarise(count=n()) %>%
+  arrange(desc(count))
+kable(df_changes_per_question)
+
+df_changes_per_questionII <- df %>%
+  filter(event=='question', !is.na(`old-value`), !is.na(`new-value`)) %>%
+  group_by(questionII) %>%
+  summarise(count=n()) %>%
+  arrange(desc(count))
+kable(df_changes_per_questionII)
+```
+
+### 3.2. Table with median time until input is changed per question
+```{r}
+df_time_till_change <- df %>%
+  filter(!is.na(time_till_change)) %>%
+  group_by(question) %>%
+  summarise(median_time_till_change = median(time_till_change)) %>%
+  arrange(desc(median_time_till_change))
+kable(df_time_till_change)
+```
+
+### 3.3 Table with count of old-new value pairs
+```{r}
+df_stream <- df %>%
+  filter(!is.na(changed_from)) %>%
+  group_by(questionII, changed_from) %>%
+  summarise(count=n())%>%
+  arrange(desc(count))
+
+kable(df_stream)
+```
+
+### 3.4 Table showing time till change outliers (for all data without anyhting removed)
+```{r}
+subset(df, time_till_change>quantile(df$time_till_change, 0.90, na.rm=TRUE)) %>% 
+  arrange(desc(time_till_change)) %>%
+  select(questionII, time_spent, time_till_change, start, end)
+```
+
+## 4. Metrics per instance
+### 4.1 Distribution of duration per instance 
+```{r}
+df_duration_per_inst <- df %>%
+  group_by(`instance ID`) %>%
+  summarise(duration_per_inst = max(end, na.rm=T) - min(start, na.rm=T)) %>%
+  mutate(duration_per_inst_mins =as.numeric(duration_per_inst/60^2)) %>%
+  arrange(desc(duration_per_inst))
+df_duration_per_inst
+
+hist(as.numeric(df_duration_per_inst$duration_per_inst_mins), breaks=20, main="Histogram of Duration per Instance in minutes", xlab="Duration in minutes")
+```

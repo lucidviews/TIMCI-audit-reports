@@ -1,0 +1,415 @@
+---
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+    number_section: TRUE
+    df_print: kable
+params:
+  svc: "some_default"
+  display_code_chunks: TRUE
+  set_title: "some_default"
+  type: "some_default"
+title: "`r params$set_title`"
+author: "Lucas Silbernagel"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+```{r, include=FALSE}
+source("./Audit Report Functions.R", local = knitr::knit_global())
+```
+
+`r if(!params$display_code_chunks) {"\\begin{comment}"}`
+```{r, eval=TRUE, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(openxlsx)
+library(knitr)
+library(tibble)
+library(stringr)
+library(stringi)
+library(readxl)
+library(lubridate)
+library(shiny)
+library(plotly)
+library(ruODK)
+```
+
+# Loading the Data and Removal of Training Data
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# Unzip and extract ODK data from ODK zip
+df <- export_load_audit_from_odk(params$svc)
+
+# Formatting dates from integer (in ms) to time stamp
+df$start_orig <- df$start
+df$start <- format_date_ms(df$start)
+df$end <- format_date_ms(df$end)
+
+# filtering for events that occurred after 18th July 21
+#df <- subset(df, as.Date(start) > as.Date("18.07.2021", "%d.%m.%Y"))
+```
+
+# Deriving New Features
+## Time Spent per Event
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# subtracting end from start date
+df$time_spent = round(as.numeric(df$end - df$start))
+```
+
+## Question
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# splitting the node strings so that only the question name remains 
+df$question = sapply(df$node, create_question)
+```
+
+## Original Question Order
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# adds a question order column that indicates at which position this event(question) is supposed to happen according to the form definition
+df <- add_question_order(df, svc)
+```
+
+## Violation of Original Question Order
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+# flags events where the original form order was violated
+df <- add_order_violation(df)
+```
+
+## Question Decoded
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+df <- decode_question(df, df$question, params$svc)
+```
+
+## Categorical Answers Decoded
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+df <- decode_categories(df, params$svc)
+```
+
+## Time until a Response was Changed + Stream of Answer Changes
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+df <- df %>%
+# bringing the data in the right order   
+  arrange(instance.ID, node, start) %>%
+# adding two empty columns to store the new features in
+  add_column(time_till_change=NA) %>%
+  add_column(changed_from=NA)
+
+# iterating over the df and computing the time it took until an answer was changed + adding what the question was before 
+for (i in 1:nrow(df)){
+  if (df$old.value[i]==df$new.value[i-1] && !is.na(df$old.value[i]) && !is.na(df$new.value[i-1]) ){
+    df$time_till_change[i] <- round(as.numeric(df$start[i]-df$end[i-1]))
+  } else{
+    next
+  }
+}
+```
+
+## Preview and Summary of the Final Data
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+head(df)
+summary(df)
+```
+`r if(!params$display_code_chunks) {"\\end{comment}"}`
+
+`r if(params$display_code_chunks) {"\\begin{comment}"}`
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(openxlsx)
+library(knitr)
+library(tibble)
+library(stringr)
+library(stringi)
+library(readxl)
+library(lubridate)
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+# Unzip and extract ODK data from ODK zip
+df <- export_load_from_odk(params$svc)
+
+# Formatting dates from integer (in ms) to time stamp
+df$start_orig <- df$start
+df$start <- format_date_ms(df$start)
+df$end <- format_date_ms(df$end)
+
+# filtering for events that occurred after 18th July 21
+#df <- subset(df, as.Date(start) > as.Date("18.07.2021", "%d.%m.%Y"))
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+# subtracting end from start date
+df$time_spent = round(as.numeric(df$end - df$start))
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+# splitting the node strings so that only the question name remains 
+df$question = sapply(df$node, create_question)
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+# adds a question order column that indicates at which position this event(question) is supposed to happen according to the form definition
+df <- add_question_order(df, svc)
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+# flags events where the original form order was violated
+df <- add_order_violation(df)
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+df <- decode_question(df, df$question, params$svc)
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+df <- decode_categories(df, params$svc)
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+df <- df %>%
+# bringing the data in the right order   
+  arrange(instance.ID, node, start) %>%
+# adding two empty columns to store the new features in
+  add_column(time_till_change=NA) %>%
+  add_column(changed_from=NA)
+
+# iterating over the df and computing the time it took until an answer was changed + adding what the question was before 
+for (i in 1:nrow(df)){
+  if (df$old.value[i]==df$new.value[i-1] && !is.na(df$old.value[i]) && !is.na(df$new.value[i-1]) ){
+    df$time_till_change[i] <- round(as.numeric(df$start[i]-df$end[i-1]))
+  } else{
+    next
+  }
+}
+```
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+head(df)
+summary(df)
+```
+`r if(params$display_code_chunks) {"\\end{comment}"}`
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+if (params$display_code_chunks){
+  knitr::opts_chunk$set(
+    echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE
+  )
+} else{
+  knitr::opts_chunk$set(
+    echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE
+  )
+}
+```
+# General Information about the Data
+```{r}
+no_inst = length(unique(df$instance.ID))
+no_event =  nrow(df)
+earliest_start = as.Date(min(df$start)) 
+latest_end = as.Date(max(df$end[!is.na(df$end)]))
+```
+Total number of instances: **`r no_inst`**\
+Total number of events/questions: **`r no_event`**\
+Examination period: **`r earliest_start` - `r latest_end`**
+
+# Grouped by Time
+## Events/Questions Started by Day
+```{r}
+df_by_day <- df %>%
+  mutate(start_date = as.Date(start)) %>%
+  count(start_date, name = "count")
+
+gg1 <- ggplot(df_by_day, aes(x = start_date, y = count)) +
+  geom_line() +
+  geom_smooth(alpha=0.5, colour="red", method="loess", se=F) +
+  labs(title = "Number of Events/Questions Started by Day with Smoothed Regression Line", y =  "Number of Questions/Events Started", x = "Satrt Date") +
+  theme_light() 
+gg1
+```
+
+
+## Questions/Events started by Weekday and Hour of the Day
+```{r}
+df_wday_hour <- df %>%
+  mutate(wday=wday(start, label=T, week_start = 1), hour=hour(start)) %>%
+  count(wday, hour, name="count_wday_hour") %>%
+  arrange(desc(wday))
+
+theme_heatmap <- theme_light() +                 
+  theme(panel.grid = element_blank(),            
+        panel.border = element_blank(),          
+        plot.title = element_text(face = "bold", size = 11, hjust = 0.5), 
+        axis.ticks = element_blank(),            
+        axis.title.x = element_blank(),        
+        axis.title.y = element_text(size=10),   
+        axis.text.y = element_text(size = 8),    
+        axis.text.x = element_text(size = 10),   
+        legend.position = "none")                
+
+gg2 <- ggplot(df_wday_hour, aes(x = wday, y = hour, fill = count_wday_hour)) +
+  geom_tile(colour="white") +  
+  scale_fill_gradient(low = "#fff0f0", high="#940606") +  
+  scale_y_reverse(breaks=c(23:0), labels=c(23:0), expand = c(0,0)) +               
+  scale_x_discrete(expand = c(0,0), position = "top") +
+  labs(title = "Number of Started Events/Questions by Day of Week / Hour of Day", y = "Hour of Day") +
+  geom_text(aes(label = count_wday_hour), size = 2) +
+  theme_heatmap  
+gg2
+```
+
+
+## Distribution of Time Spent per Event/Question with largest 5 % removed
+```{r}
+df_clean = subset(df, time_spent<quantile(df$time_spent,0.95, na.rm=TRUE))
+
+hist(df_clean$time_spent[!is.na(df_clean$time_spent)]/60, breaks=20, xlab = "Time Spent in Minutes", main = "Histogram of the Time Spent by Question")
+```
+
+
+
+# Aggregated by Event/Question 
+## Median Time Spent by Question
+```{r}
+df_median_time_per_question <- df %>%
+  filter(event=="question") %>%
+  group_by(question_decoded) %>%
+  summarise(median_time_spent = median(time_spent)) %>%
+  arrange(desc(median_time_spent)) %>%
+  mutate(median_time_spent = round(seconds_to_period(median_time_spent)))
+
+df_median_time_per_question
+```
+
+
+## Count of Input Changes and Median Time until Input was Changed by Question 
+```{r}
+df_changes_per_question <- df %>%
+  filter(event=="question", 
+         !is.na(time_till_change)) %>%
+  group_by(question_decoded) %>%
+  summarise(count_input_changes=n(), 
+            median_time_till_change=median(time_till_change), 
+            sd_time_till_change=sd(time_till_change)) %>%
+  arrange(desc(count_input_changes)) %>%
+  mutate(median_time_till_change = round(seconds_to_period(median_time_till_change)),
+         sd_time_till_change = round(seconds_to_period(sd_time_till_change), 1)) %>%
+  filter(count_input_changes > 1)
+
+df_changes_per_question
+```
+
+
+## Count of Old-New Value Pairs
+```{r}
+df_stream <- df %>%
+  filter(!is.na(time_till_change)) %>%
+  count(question_decoded, 
+        old_value_decoded, 
+        new_value_decoded, 
+        name="count_value_pairs", 
+        sort=TRUE) %>%
+  filter(count_value_pairs > 1)
+
+df_stream
+```
+
+
+
+# Aggregated by Instance
+## Top 10 % of Duration by Instance
+```{r}
+df_duration_per_inst <- df %>%
+  group_by(instance.ID) %>%
+  summarise(duration_per_inst = max(end, na.rm=T) - min(start, na.rm=T)) %>% 
+  filter(duration_per_inst>quantile(duration_per_inst, 0.9, na.rm=TRUE)) %>%
+  mutate(duration_per_inst = round(seconds_to_period(duration_per_inst))) %>%
+  arrange(desc(duration_per_inst))
+
+df_duration_per_inst
+```
+
+## Distribution of Duration by Instance with Top 10 % excluded
+```{r}
+df_subsetted <- df %>%
+  group_by(instance.ID) %>%
+  summarise(duration_per_inst = max(end, na.rm=T) - min(start, na.rm=T)) %>%
+  filter(duration_per_inst<quantile(duration_per_inst, 0.9, na.rm=TRUE))
+ 
+hist(as.numeric(df_subsetted$duration_per_inst/60), breaks=30, main="Duration per Instance in Minutes (outliers removed)", xlab="Duration in Minutes")
+```
+
+
+
+# Irregularities and Outliers
+## Time Till Change Outliers (for all data without removed outliers)
+```{r}
+df_time_till_change_outliers <- df %>% 
+  filter(time_till_change>quantile(df$time_till_change, 0.9, na.rm=TRUE)) %>% 
+  arrange(desc(time_till_change)) %>%
+  mutate(time_till_change = round(seconds_to_period(time_till_change))) %>%
+  select(instance.ID, 
+         question_decoded, 
+         old_value_decoded, 
+         new_value_decoded, 
+         time_till_change)
+
+df_time_till_change_outliers
+```
+
+## Histograms of Instances with Inconsistent Filling Behaviour
+```{r}
+irregular_inst = c()
+for (id in unique(df$instance.ID)){
+  bin_vec = cut(df$start[df$instance.ID==id], 
+                breaks=10, 
+                labels=F)
+  if (length(unique(bin_vec)) < 5) irregular_inst = c(irregular_inst, id)
+}
+paste0(length(irregular_inst), " out of ", length(unique(df$instance.ID))," instances were found to have an inconsistent filling behaviour.")
+
+last_bin_questions = c()
+fig <- plot_ly(alpha=0.1)
+for (id in irregular_inst){
+  temp_df = df[df$instance.ID==id,]
+  temp_df$cut = cut(temp_df$start, breaks=10, labels=c("1. Part", "2. Part", "3. Part", "4. Part", "5. Part", "6. Part", "7. Part", "8. Part", "9. Part", "10. Part"))
+  fig <- fig %>% add_histogram(x=temp_df$cut, name=id)
+  
+  last_bin_questions = c(last_bin_questions, temp_df$question_decoded[temp_df$cut=="10. Part"])
+}
+fig <- fig %>% layout(barmode = "overlay")
+fig
+
+kable(table(last_bin_questions) %>% as.data.frame() %>% arrange(desc(Freq)))
+```
+
+## Filling Order Timeline
+```{r}
+df_violated = df[df$order_violation==1,]
+
+if (length(df_violated)==0){
+  ids_violated = unique(df_violated$instance.ID)
+
+  for (id in unique(ids_violated)){
+    plot_sequence(df, id)
+    
+    df_violated_selected = df %>%
+      arrange(start, question_order) %>%
+      mutate(idu=as.numeric(row.names(df))) %>%
+      filter(instance.ID==id, !is.na(question_order)) %>%
+      select(idu, question_order, question, question_decoded) %>%
+      kable()
+    print(df_violated_selected)
+  } 
+} else{
+  for (id in unique(df$instance.ID)){
+    plot_sequence(df, id)
+    
+    df_violated_selected = df %>%
+      arrange(start, question_order) %>%
+      mutate(idu=as.numeric(row.names(df))) %>%
+      filter(instance.ID==id, !is.na(question_order)) %>%
+      select(idu, question_order, question, question_decoded) %>%
+      kable()
+    print(df_violated_selected)
+  }
+}
+```
