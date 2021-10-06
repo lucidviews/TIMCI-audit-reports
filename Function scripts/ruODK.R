@@ -2,6 +2,7 @@ library(readr)
 library(knitr)
 library(readxl)
 library(ruODK)
+library(fs)
 
 # execute ODK Central settings
 setup_ruODK <- function(svc){

@@ -6,8 +6,8 @@ output:
     number_section: TRUE
     df_print: kable
 params:
-  file_path_zip: "/Users/lucassilbernagel/Documents/_Master HWR Berlin_/3nd Semester/Internship Swiss TPH/First week/03a-TIMCI-SPA-fa.zip"
-  file_name_csv: "07-TIMCI-fa - audit.csv"
+  file_path_zip: "some_default"
+  file_name_csv: "some_default"
   display_code_chunks: TRUE
   set_title: "some_default"
   type: "some_default"
@@ -17,7 +17,7 @@ author: "Lucas Silbernagel"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 ---
 ```{r, include=FALSE}
-source("./Archive/Audit Report Functions copy 29_09_2021.R", local = knitr::knit_global())
+source("./Archive/Scripts/Audit Report Functions copy 29_09_2021.R", local = knitr::knit_global())
 ```
 
 `r if(!params$display_code_chunks) {"\\begin{comment}"}`

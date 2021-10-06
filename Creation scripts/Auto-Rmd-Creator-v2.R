@@ -2,7 +2,7 @@
 library(rmarkdown)
 
 # set working directory
-setwd("U:/Internship Swiss TPH/First week/TIMCI/Auto Rmd")
+setwd("C:/Users/silblu/Documents/GitHub/TIMCI-reports")
 
 # Enter ODK SVC
 svc <- 'https://timicodktest.smartforest.de/v1/projects/2/forms/02-TIMCI-SPA-CGEI.svc'
@@ -27,10 +27,10 @@ insert_params <- function(svc, display_code, audit_type){
   )
 }
 
-render_rmd <- function(rmd_file_path = "./Audit-Report-Template-New.Rmd", 
+render_rmd <- function(rmd_file_path = "./Markdown scripts/Audit-Report-Template-v2.Rmd", 
                        output_format = 'html_document', 
                        output_file, 
-                       output_dir = ".",
+                       output_dir = "./Archive/Rendered RMDs",
                        params){
   rmarkdown::render(input=rmd_file_path, output_format = output_format, output_file = output_file, output_dir = output_dir, params = params, envir = new.env())
 }

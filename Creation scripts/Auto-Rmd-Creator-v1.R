@@ -1,11 +1,11 @@
 library(rmarkdown)
 
 # Enter path to directory with zip files
-zip_dir <- "U:/Internship Swiss TPH/First week/Data/Senegal"
+zip_dir <- "C:/Users/silblu/Documents/GitHub/TIMCI-reports/Archive/Audit zip files"
 zip_files <- list.files(path=zip_dir, full.names = TRUE)
 
 # set working directory
-setwd("U:/Internship Swiss TPH/First week/TIMCI/Auto Rmd")
+setwd("C:/Users/silblu/Documents/GitHub/TIMCI-reports")
 
 # enter codebook paths
 codebook_tflow <- "U:/Internship Swiss TPH/First week/Data/Tanzania/07-TIMCI-tflow (2)/07-TIMCI-timeflow_codebook.xlsx"
@@ -31,10 +31,10 @@ insert_params <- function(zip, display_code, audit_type, codebook_path){
   )
 }
 
-render_rmd <- function(rmd_file_path = "./Audit Report Template.Rmd",
+render_rmd <- function(rmd_file_path = "./Markdown scripts/Audit-Report-Template-v1.Rmd",
                        output_format = 'html_document', 
                        output_file, 
-                       output_dir = ".",
+                       output_dir = "./Archive/Rendered RMDs",
                        params){
   rmarkdown::render(input=rmd_file_path, output_format = output_format, output_file = output_file, output_dir = output_dir, params = params, envir = new.env())
 }
